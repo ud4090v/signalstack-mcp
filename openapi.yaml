@@ -1,0 +1,411 @@
+openapi: "3.0.3"
+info:
+  title: SignalStack API
+  version: "4.0.0"
+  description: |
+    SignalStack is a daily crypto market intelligence API that scores market conditions
+    across 7 categories (price action, on-chain, derivatives, ETF flows, macro,
+    dominance, sentiment) into a 0-100 composite Candle Review score.
+
+    ## Tiers
+
+    | Tier | API Key Required | Access |
+    |------|-----------------|--------|
+    | Free | No              | `date`, `score`, `label` only |
+    | Pro  | Yes (`X-API-Key`) | Full JSON: categories, outlook, what_happened |
+
+    ## Getting an API Key
+    Contact the SignalStack team or visit the SignalStack listing on RapidAPI to
+    obtain a free or pro API key.
+
+  contact:
+    name: SignalStack Support
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://96.126.106.225:3458
+    description: Production (nginx proxy)
+  - url: http://localhost:3458
+    description: Local (nginx proxy)
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Optional for free tier. Required for pro tier endpoints.
+        Invalid keys return 401. Omitting the key defaults to free tier.
+
+  schemas:
+    CategoryScore:
+      type: object
+      required: [score, max, summary]
+      properties:
+        score:
+          type: number
+          description: Score earned in this category
+          example: 18
+        max:
+          type: number
+          description: Maximum possible score for this category
+          example: 25
+        summary:
+          type: string
+          description: Human-readable summary of category signals
+          example: "BTC up 3.2% on strong volume. Bullish structure confirmed."
+
+    CandleReviewFree:
+      type: object
+      description: Free tier response — composite score and label only
+      required: [date, score, label]
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-03-28"
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Composite market score (0–100)
+          example: 67
+        label:
+          type: string
+          enum: [Strongly Bullish, Bullish, Neutral, Bearish, Strongly Bearish]
+          example: Bullish
+
+    CandleReviewPro:
+      type: object
+      description: Pro tier response — full analysis including all categories
+      required: [date, score, label, categories, outlook, what_happened, generated_at]
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-03-28"
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          example: 67
+        label:
+          type: string
+          enum: [Strongly Bullish, Bullish, Neutral, Bearish, Strongly Bearish]
+          example: Bullish
+        categories:
+          type: object
+          description: Per-category breakdown
+          properties:
+            price_action:
+              $ref: "#/components/schemas/CategoryScore"
+            on_chain:
+              $ref: "#/components/schemas/CategoryScore"
+            derivatives:
+              $ref: "#/components/schemas/CategoryScore"
+            etf_flows:
+              $ref: "#/components/schemas/CategoryScore"
+            macro:
+              $ref: "#/components/schemas/CategoryScore"
+            dominance:
+              $ref: "#/components/schemas/CategoryScore"
+            sentiment:
+              $ref: "#/components/schemas/CategoryScore"
+        outlook:
+          type: string
+          description: Forward-looking market narrative
+          example: "Near-term momentum remains bullish. Watch for resistance at $75k."
+        what_happened:
+          type: string
+          description: Summary of the day's key market events
+          example: "Spot ETF inflows hit $400M. BTC held above $70k on macro risk-off."
+        generated_at:
+          type: string
+          format: date-time
+          example: "2026-03-28T06:00:01.000Z"
+
+    CategoryDetailResponse:
+      type: object
+      required: [date, category, score, max, pct, summary, composite_score, label]
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-03-28"
+        category:
+          type: string
+          example: price_action
+        score:
+          type: number
+          example: 18
+        max:
+          type: number
+          example: 25
+        pct:
+          type: integer
+          description: Score as percentage of max
+          example: 72
+        summary:
+          type: string
+          example: "BTC up 3.2% on strong volume. Bullish structure confirmed."
+        composite_score:
+          type: number
+          description: Overall composite score for the day
+          example: 67
+        label:
+          type: string
+          enum: [Strongly Bullish, Bullish, Neutral, Bearish, Strongly Bearish]
+          example: Bullish
+
+    HealthResponse:
+      type: object
+      required: [ok, version, timestamp]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        version:
+          type: string
+          example: "4.0.0"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-28T20:00:00.000Z"
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "Invalid API key"
+        detail:
+          type: string
+          description: Additional error context (optional)
+        upgrade:
+          type: string
+          description: Upgrade hint for tier-gated endpoints (optional)
+          example: "Pass X-API-Key header with a valid pro key"
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: Returns server health status, version, and current timestamp.
+      tags: [System]
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /candle/today:
+    get:
+      operationId: getCandleToday
+      summary: Today's Candle Review
+      description: |
+        Returns today's composite market score. Free tier returns `date`, `score`,
+        and `label`. Pro tier returns the full review including all 7 category
+        breakdowns, outlook, and what_happened narrative.
+
+        Scores are generated daily at ~06:00 UTC from live DefiLlama, CoinGecko,
+        and Dune data. Results are cached for 5 minutes.
+      tags: [Candle Review]
+      security:
+        - {}
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Today's candle review
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CandleReviewFree"
+                  - $ref: "#/components/schemas/CandleReviewPro"
+              examples:
+                free:
+                  summary: Free tier response
+                  value:
+                    date: "2026-03-28"
+                    score: 67
+                    label: Bullish
+                pro:
+                  summary: Pro tier response
+                  value:
+                    date: "2026-03-28"
+                    score: 67
+                    label: Bullish
+                    categories:
+                      price_action: { score: 18, max: 25, summary: "BTC up 3.2% on strong volume." }
+                      on_chain: { score: 14, max: 20, summary: "Exchange reserves declining." }
+                      derivatives: { score: 13, max: 20, summary: "Funding rates slightly positive." }
+                      etf_flows: { score: 11, max: 15, summary: "Spot ETF net inflows $400M." }
+                      macro: { score: 6, max: 10, summary: "DXY weakening, risk-on." }
+                      dominance: { score: 3, max: 5, summary: "BTC dominance stable at 54%." }
+                      sentiment: { score: 2, max: 5, summary: "Fear & Greed index at 68." }
+                    outlook: "Near-term momentum remains bullish."
+                    what_happened: "Spot ETF inflows hit $400M. BTC held above $70k."
+                    generated_at: "2026-03-28T06:00:01.000Z"
+        "500":
+          description: Score generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /candle/history:
+    get:
+      operationId: getCandleHistory
+      summary: Historical Candle Reviews
+      description: |
+        Returns historical candle reviews, most recent first. Free tier returns
+        `date`, `score`, `label` per entry. Pro tier returns full reviews.
+
+        Max limit: 365. Default: 30.
+      tags: [Candle Review]
+      security:
+        - {}
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Number of results to return (1–365, default 30)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+            example: 7
+      responses:
+        "200":
+          description: Array of candle reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                    - $ref: "#/components/schemas/CandleReviewFree"
+                    - $ref: "#/components/schemas/CandleReviewPro"
+        "500":
+          description: Failed to fetch history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /candle/category/{category}:
+    get:
+      operationId: getCandleCategory
+      summary: Category breakdown (Pro only)
+      description: |
+        Returns today's score for a specific market category. **Pro tier only.**
+        Free tier callers receive a 403 with an upgrade hint.
+
+        Valid categories: `price_action`, `on_chain`, `derivatives`, `etf_flows`,
+        `macro`, `dominance`, `sentiment`.
+      tags: [Candle Review]
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: category
+          in: path
+          required: true
+          description: Market category to retrieve
+          schema:
+            type: string
+            enum:
+              - price_action
+              - on_chain
+              - derivatives
+              - etf_flows
+              - macro
+              - dominance
+              - sentiment
+          example: price_action
+      responses:
+        "200":
+          description: Category score detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryDetailResponse"
+        "400":
+          description: Invalid category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Pro tier required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Pro tier required"
+                upgrade: "Pass X-API-Key header with a valid pro key"
+        "500":
+          description: Score generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /openapi.yaml:
+    get:
+      operationId: getOpenApiSpec
+      summary: OpenAPI specification
+      description: Returns this OpenAPI 3.0 specification file.
+      tags: [System]
+      responses:
+        "200":
+          description: OpenAPI YAML specification
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  /mcp:
+    get:
+      operationId: mcpSseConnect
+      summary: MCP SSE connection
+      description: |
+        Server-Sent Events endpoint for MCP (Model Context Protocol) clients.
+        Connect with `GET /mcp` to receive the SSE stream. Send requests to
+        `POST /mcp` with the MCP JSON-RPC envelope.
+
+        Pro API key required for full tool access. Free tier has read access to
+        composite scores only.
+      tags: [MCP]
+      security:
+        - {}
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+tags:
+  - name: System
+    description: Health and metadata endpoints
+  - name: Candle Review
+    description: Daily crypto market scoring endpoints
+  - name: MCP
+    description: Model Context Protocol server (SSE transport)

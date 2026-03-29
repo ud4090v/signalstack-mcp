@@ -217,4 +217,55 @@ export function registerCoinGeckoTools(
       }
     }
   );
+
+  // ── coingecko.get_ohlcv ───────────────────────────────────────────────────
+  server.tool(
+    "coingecko.get_ohlcv",
+    "Get OHLCV candlestick data for a coin from CoinGecko. Returns array of [timestamp, open, high, low, close].",
+    {
+      id: z.string().describe("CoinGecko coin ID (e.g. 'bitcoin', 'ethereum')"),
+      vs_currency: z
+        .string()
+        .optional()
+        .describe("Target currency (e.g. 'usd'). Defaults to 'usd'."),
+      days: z
+        .union([
+          z.literal(1),
+          z.literal(7),
+          z.literal(14),
+          z.literal(30),
+          z.literal(90),
+          z.literal(180),
+          z.literal(365),
+        ])
+        .describe("Number of days of OHLCV data: 1, 7, 14, 30, 90, 180, or 365"),
+    },
+    async (args) => {
+      try {
+        limiter.assertLimit(PROVIDER);
+        const vsCurrency = args.vs_currency ?? "usd";
+        const key = makeCacheKey("coingecko.get_ohlcv", {
+          id: args.id,
+          vs_currency: vsCurrency,
+          days: args.days,
+        });
+        let data = cache.get(key);
+        if (!data) {
+          limiter.recordUsage(PROVIDER);
+          const params = new URLSearchParams({
+            vs_currency: vsCurrency,
+            days: String(args.days),
+          });
+          data = await fetchJson(
+            `${BASE_URL}/coins/${encodeURIComponent(args.id)}/ohlc?${params}`,
+            { headers: getHeaders() }
+          );
+          cache.set(key, data, PROVIDER, 60);
+        }
+        return toolResponse(data);
+      } catch (err) {
+        return errorResponse(err);
+      }
+    }
+  );
 }

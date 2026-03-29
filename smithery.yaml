@@ -1,0 +1,11 @@
+startCommand:
+  type: http
+  url: http://96.126.106.225:3458/mcp
+  configSchema:
+    type: object
+    properties:
+      apiKey:
+        type: string
+        title: API Key
+        description: "Optional pro tier API key. Omit for free tier (composite score + label only). Get a key at https://rapidapi.com."
+    required: []
